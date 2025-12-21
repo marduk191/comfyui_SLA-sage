@@ -3,4 +3,5 @@ git+https://github.com/marduk191/SLA.git
 
 # Optional: For optimized SageSLA support (recommended for best performance)
 # Uncomment the line below to install SpargeAttn for SageSLA:
-# git+https://github.com/thu-ml/SpargeAttn.git
+# git+https://github.com/marduk191/SpargeAttn.git
+# note: this requires triton on linux and triton-windows on windows.
