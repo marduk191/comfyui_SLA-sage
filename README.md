@@ -57,13 +57,15 @@ nope
 - PyTorch >= 2.0.0
 - CUDA-compatible GPU
 - ComfyUI (latest version recommended)
+- SLA
+- Sparge attention
 
 ### Optional: SageSLA (Optimized) Installation
 
 For the best performance with the SageSLA node, you can install the optimized SpargeAttn backend:
 
 ```bash
-pip install git+https://github.com/thu-ml/SpargeAttn.git --no-build-isolation
+pip install git+https://github.com/marduk191/SpargeAttn.git --no-build-isolation
 ```
 
 **Note:**
