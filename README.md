@@ -182,7 +182,7 @@ See `example_workflow.json` for a complete example you can drag into ComfyUI.
 
 Make sure you've installed the SLA package:
 ```bash
-pip install git+https://github.com/thu-ml/SLA.git
+pip install git+https://github.com/marduk191/SLA.git
 ```
 
 ### "Using standard SLA (SageSLA not found)" message
@@ -194,7 +194,7 @@ This is an informational message, not an error. It means:
 
 To get the optimized SageSLA implementation:
 ```bash
-pip install git+https://github.com/thu-ml/SpargeAttn.git --no-build-isolation
+pip install git+https://github.com/marduk191/SpargeAttn.git --no-build-isolation
 ```
 
 ### No speedup observed
