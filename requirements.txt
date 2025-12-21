@@ -1,3 +1,3 @@
 torch>=2.0.0
-git+https://github.com/thu-ml/SLA.git
+git+https://github.com/marduk191/SLA
 triton-windows
