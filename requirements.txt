@@ -1,2 +1,6 @@
 torch>=2.0.0
 git+https://github.com/thu-ml/SLA.git
+
+# Optional: For optimized SageSLA support (recommended for best performance)
+# Uncomment the line below to install SpargeAttn for SageSLA:
+# git+https://github.com/thu-ml/SpargeAttn.git

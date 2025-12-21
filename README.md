@@ -63,6 +63,20 @@ If you have [ComfyUI Manager](https://github.com/ltdrdata/ComfyUI-Manager) insta
 - CUDA-compatible GPU
 - ComfyUI (latest version recommended)
 
+### Optional: SageSLA (Optimized) Installation
+
+For the best performance with the SageSLA node, you can install the optimized SpargeAttn backend:
+
+```bash
+pip install git+https://github.com/thu-ml/SpargeAttn.git --no-build-isolation
+```
+
+**Note:**
+- Without SpargeAttn, the SageSLA node will automatically fall back to using standard SLA
+- The standard SLA implementation works well for most use cases
+- SageSLA provides additional speed optimizations based on the SageAttention framework
+- Installation requires a CUDA development environment
+
 ## 📖 Usage
 
 ### Available Nodes
@@ -101,17 +115,20 @@ The main SLA node with full configurability:
 
 #### 2. SageSLA Attention (Optimized)
 
-Streamlined version with optimal defaults:
+Optimized implementation using fixed block sizes (BLKQ=128, BLKK=64) for best performance:
 
 **Inputs:**
 - `model` (MODEL): Input model to patch
 
 **Parameters:**
 - `topk` (float, 0.0-1.0): Sparsity ratio
+- `feature_map` (dropdown): Kernel type (softmax, elu, relu)
 - `enabled` (boolean): Enable/disable SageSLA
 
 **Outputs:**
 - `MODEL`: Patched model with SageSLA attention
+
+**Note:** Automatically falls back to standard SLA if SpargeAttn is not installed. For optimal performance, install SpargeAttn (see Optional Installation above).
 
 ### Example Workflow
 
@@ -169,6 +186,18 @@ See `example_workflow.json` for a complete example you can drag into ComfyUI.
 Make sure you've installed the SLA package:
 ```bash
 pip install git+https://github.com/thu-ml/SLA.git
+```
+
+### "Using standard SLA (SageSLA not found)" message
+
+This is an informational message, not an error. It means:
+- You're using the SageSLA node without the SpargeAttn package installed
+- The node automatically falls back to standard SLA implementation
+- Everything will work fine, but you may not get the maximum performance boost
+
+To get the optimized SageSLA implementation:
+```bash
+pip install git+https://github.com/thu-ml/SpargeAttn.git --no-build-isolation
 ```
 
 ### No speedup observed

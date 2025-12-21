@@ -141,7 +141,9 @@ class SLAAttentionNode:
 class SLASageAttentionNode:
     """
     A ComfyUI node that applies SageSLA (optimized SLA) to models.
-    This is a more optimized version of SLA attention.
+    SageSLA is an optimized implementation based on SageAttention framework.
+    Requires: pip install git+https://github.com/thu-ml/SpargeAttn.git --no-build-isolation
+    Note: SageSLA only supports fixed block sizes (BLKQ=128, BLKK=64)
     """
 
     @classmethod
@@ -157,6 +159,10 @@ class SLASageAttentionNode:
                     "display": "slider",
                     "tooltip": "Sparsity ratio (0.2 = keep 80% of tokens)"
                 }),
+                "feature_map": (["softmax", "elu", "relu"], {
+                    "default": "softmax",
+                    "tooltip": "Kernel type for attention computation"
+                }),
                 "enabled": ("BOOLEAN", {
                     "default": True,
                     "tooltip": "Enable/disable SageSLA attention"
@@ -167,18 +173,19 @@ class SLASageAttentionNode:
     RETURN_TYPES = ("MODEL",)
     FUNCTION = "apply_sage_sla"
     CATEGORY = "model_patches/attention"
-    DESCRIPTION = "Applies SageSLA (optimized SLA) for faster inference"
+    DESCRIPTION = "Applies SageSLA (optimized SLA) for faster inference. Requires SpargeAttn installation."
 
     def __init__(self):
         self.sage_sla_module = None
 
-    def apply_sage_sla(self, model, topk, enabled):
+    def apply_sage_sla(self, model, topk, feature_map, enabled):
         """
         Apply SageSLA (optimized) attention to the model
 
         Args:
             model: ComfyUI MODEL object
             topk: Sparsity ratio
+            feature_map: Type of feature map ('softmax', 'elu', 'relu')
             enabled: Whether to enable SageSLA
 
         Returns:
@@ -188,13 +195,16 @@ class SLASageAttentionNode:
             return (model,)
 
         try:
-            # Try to import SageSLA - it might be in a subdirectory
+            # Try to import SageSLA
             try:
-                from SageSLA.sparse_linear_attention import SageSLA
+                from SageSLA import SageSparseLinearAttention
+                use_sage = True
             except ImportError:
                 # Fallback to regular SLA if SageSLA not available
-                from sparse_linear_attention import SparseLinearAttention as SageSLA
+                from sparse_linear_attention import SparseLinearAttention
+                use_sage = False
                 print("INFO: Using standard SLA (SageSLA not found)")
+                print("INFO: For optimized SageSLA, install: pip install git+https://github.com/thu-ml/SpargeAttn.git --no-build-isolation")
         except ImportError:
             print("WARNING: SLA module not found. Please install with: pip install git+https://github.com/thu-ml/SLA.git")
             print("Returning unmodified model.")
@@ -209,15 +219,32 @@ class SLASageAttentionNode:
             batch_size, num_heads, seq_len, head_dim = q.shape
 
             # Initialize SageSLA module
-            sage_key = (head_dim, topk)
+            sage_key = (head_dim, topk, feature_map, use_sage)
             if not hasattr(self, 'sage_cache') or self.sage_cache.get('key') != sage_key:
-                self.sage_cache = {
-                    'key': sage_key,
-                    'module': SageSLA(
-                        head_dim=head_dim,
-                        topk=topk,
-                    ).to(q.device).to(q.dtype)
-                }
+                if use_sage:
+                    # SageSLA only supports fixed block sizes: BLKQ=128, BLKK=64
+                    self.sage_cache = {
+                        'key': sage_key,
+                        'module': SageSparseLinearAttention(
+                            head_dim=head_dim,
+                            topk=topk,
+                            feature_map=feature_map,
+                            BLKQ=128,  # Fixed for SageSLA
+                            BLKK=64,   # Fixed for SageSLA
+                        ).to(q.device).to(q.dtype)
+                    }
+                else:
+                    # Standard SLA fallback with configurable block sizes
+                    self.sage_cache = {
+                        'key': sage_key,
+                        'module': SparseLinearAttention(
+                            head_dim=head_dim,
+                            topk=topk,
+                            feature_map=feature_map,
+                            BLKQ=128,
+                            BLKK=64,
+                        ).to(q.device).to(q.dtype)
+                    }
 
             sage_attn = self.sage_cache['module']
             output = sage_attn(q, k, v)
@@ -226,7 +253,8 @@ class SLASageAttentionNode:
 
         cloned_model.set_model_attn1_patch(sage_sla_attention_patch)
 
-        print(f"SageSLA Attention applied with topk={topk}")
+        impl_type = "SageSLA (optimized)" if use_sage else "Standard SLA"
+        print(f"{impl_type} Attention applied with topk={topk}, feature_map={feature_map}, block_size=(128, 64)")
 
         return (cloned_model,)
 
