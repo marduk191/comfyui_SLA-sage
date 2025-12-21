@@ -25,12 +25,7 @@ SLA (Sparse-Linear Attention) is a novel attention mechanism that combines spars
 
 ### Method 1: ComfyUI Manager (Recommended)
 
-If you have [ComfyUI Manager](https://github.com/ltdrdata/ComfyUI-Manager) installed:
-
-1. Open ComfyUI Manager
-2. Search for "SLA-sage"
-3. Click Install
-4. Restart ComfyUI
+nope
 
 ### Method 2: Manual Installation
 
