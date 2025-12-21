@@ -196,7 +196,7 @@ To get the optimized SageSLA implementation:
 ```bash
 pip install git+https://github.com/marduk191/SpargeAttn.git --no-build-isolation
 ```
-
+note: if you can not get this to build on windows, wheels are available here - https://github.com/woct0rdho/SpargeAttn/releases/tag/v0.1.0-windows.post3
 ### No speedup observed
 
 - Ensure you're using a CUDA GPU
