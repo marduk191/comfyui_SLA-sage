@@ -3,11 +3,65 @@ ComfyUI Node for SLA (Sparse-Linear Attention)
 Implements attention acceleration for diffusion models using SLA
 """
 
+import sys
 import torch
 import folder_paths
 import comfy.model_patcher
 import comfy.samplers
 from comfy.model_patcher import ModelPatcher
+
+
+def _setup_spargeattn_compat():
+    """
+    Compatibility shim for SpargeAttn pre-built Windows wheels.
+
+    Pre-built wheels from woct0rdho/SpargeAttn use architecture-specific modules
+    (_qattn_sm80, _qattn_sm89, _qattn_sm90) instead of the generic _qattn module
+    that source builds create. This shim detects the GPU architecture and
+    registers the appropriate module as spas_sage_attn._qattn so upstream
+    SageSLA code works without modification.
+
+    Works on:
+    - Linux/Windows source builds (uses _qattn directly)
+    - Windows pre-built wheels (falls back to _qattn_smXX)
+    - RTX 50xx Blackwell (sm120) via sm90 PTX compatibility
+    - RTX 40xx Ada (sm89)
+    - RTX 30xx Ampere (sm80/86)
+    """
+    # Check if _qattn already exists (source build)
+    try:
+        import spas_sage_attn._qattn
+        return True
+    except ModuleNotFoundError:
+        pass
+
+    # Detect GPU architecture
+    if not torch.cuda.is_available():
+        return False
+
+    try:
+        props = torch.cuda.get_device_properties(0)
+        sm = props.major * 10 + props.minor
+    except Exception:
+        return False
+
+    # Import architecture-specific module and register as _qattn
+    try:
+        if sm >= 90:
+            # Hopper (sm90) and Blackwell (sm120) - use sm90 via PTX compatibility
+            import spas_sage_attn._qattn_sm90 as qattn
+        elif sm >= 89:
+            # Ada Lovelace (sm89)
+            import spas_sage_attn._qattn_sm89 as qattn
+        else:
+            # Ampere (sm80, sm86) and older
+            import spas_sage_attn._qattn_sm80 as qattn
+
+        # Register as _qattn so upstream SageSLA imports work
+        sys.modules['spas_sage_attn._qattn'] = qattn
+        return True
+    except ModuleNotFoundError:
+        return False
 
 class SLAAttentionNode:
     """
@@ -195,6 +249,10 @@ class SLASageAttentionNode:
             return (model,)
 
         try:
+            # Setup compatibility shim for pre-built SpargeAttn wheels
+            # (patches spas_sage_attn._qattn for architecture-specific modules)
+            _setup_spargeattn_compat()
+
             # Try to import SageSLA
             try:
                 from SageSLA import SageSparseLinearAttention
@@ -204,9 +262,10 @@ class SLASageAttentionNode:
                 from sparse_linear_attention import SparseLinearAttention
                 use_sage = False
                 print("INFO: Using standard SLA (SageSLA not found)")
-                print("INFO: For optimized SageSLA, install: pip install git+https://github.com/thu-ml/SpargeAttn.git --no-build-isolation")
+                print("INFO: For optimized SageSLA on Windows, install the pre-built wheel:")
+                print("INFO: pip install https://github.com/woct0rdho/SpargeAttn/releases/download/v0.1.0-windows.post3/spas_sage_attn-0.1.0%2Bcu128torch2.9.0.post3-cp39-abi3-win_amd64.whl")
         except ImportError:
-            print("WARNING: SLA module not found. Please install with: pip install git+https://github.com/thu-ml/SLA.git")
+            print("WARNING: SLA module not found. Please install with: pip install git+https://github.com/marduk191/SLA.git")
             print("Returning unmodified model.")
             return (model,)
 
