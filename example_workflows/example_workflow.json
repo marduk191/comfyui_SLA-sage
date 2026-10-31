@@ -74,6 +74,7 @@
       "properties": {"Node name for S&R": "SLASageAttention"},
       "widgets_values": [
         0.2,
+        "softmax",
         true
       ],
       "title": "SageSLA Attention (Optimized)"

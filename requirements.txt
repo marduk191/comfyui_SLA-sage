@@ -1,7 +1,8 @@
-torch>=2.0.0
+# torch is provided by ComfyUI. SLA needs torch>=2.7 and triton>=3.3
+# (on Windows install triton-windows).
 git+https://github.com/marduk191/SLA.git
 
-# Optional: For optimized SageSLA support (recommended for best performance)
-# Uncomment the line below to install SpargeAttn for SageSLA:
-# git+https://github.com/marduk191/SpargeAttn.git
-# note: this requires triton on linux and triton-windows on windows.
+# Optional: SpargeAttn enables the faster SageSLA kernels. It needs a CUDA
+# toolchain to build:
+#   pip install git+https://github.com/marduk191/SpargeAttn.git --no-build-isolation
+# Pre-built Windows wheels: https://github.com/woct0rdho/SpargeAttn/releases

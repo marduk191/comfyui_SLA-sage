@@ -1,31 +1,30 @@
 # ComfyUI SLA-sage
 
-**Sparse-Linear Attention (SLA) nodes for ComfyUI** - Accelerate your diffusion models with trainable sparse-linear attention!
-
-This custom node package brings the power of [SLA (Sparse-Linear Attention)](https://github.com/thu-ml/SLA) to ComfyUI, enabling faster inference for Stable Diffusion and other diffusion transformer models.
+**Sparse-Linear Attention (SLA) nodes for ComfyUI.** These nodes swap the self-attention in diffusion models for [SLA](https://github.com/thu-ml/SLA) block-sparse kernels to speed up inference on long sequences (video and high-resolution image models).
 
 ## 🌟 Features
 
-- **SLA Attention Node**: Full-featured sparse-linear attention with configurable parameters
-- **SageSLA Attention Node**: Optimized version for maximum speed
-- **Easy Integration**: Drop-in replacement for standard attention mechanisms
-- **GPU Accelerated**: CUDA-optimized for best performance
-- **ComfyUI Native**: Designed specifically for ComfyUI workflows
+- **SLA Attention node**: SLA Triton kernels with configurable sparsity and query block size
+- **SageSLA Attention node**: quantized SageSLA kernels from SpargeAttn, falling back to standard SLA when SpargeAttn isn't installed
+- **Works across model families**: hooks ComfyUI's `optimized_attention` override, so it applies to Flux, Wan, HunyuanVideo, Qwen-Image, SD3, SDXL and other models that use ComfyUI's attention
+- **Safe fallbacks**: calls the kernels can't handle run on ComfyUI's regular attention instead of erroring
+- **Step window**: limit sparse attention to part of the sampling schedule with `start_percent` / `end_percent`
 
 ## 📋 What is SLA?
 
-SLA (Sparse-Linear Attention) is a novel attention mechanism that combines sparse and linear attention to accelerate diffusion transformer models. It selectively attends to the most relevant tokens rather than computing full attention across all positions, resulting in:
+SLA (Sparse-Linear Attention) splits attention into a block-sparse part and a linear part. For each block of queries it computes exact attention against the top-k most relevant key blocks and handles the remaining blocks with cheap linear attention. Skipping most of the key blocks is where the speedup comes from.
 
-- ⚡ **Faster inference** - Reduced computational complexity
-- 🎯 **Maintained quality** - Minimal impact on generation quality
-- 🔧 **Configurable** - Adjust sparsity levels to balance speed vs quality
-- 🚀 **Trainable** - Can be fine-tuned for specific models
+> **Note on weights:** the linear branch's projection (`proj_l`) is learned during SLA fine-tuning and is zero-initialised. With ordinary (non-SLA-fine-tuned) checkpoints, the node therefore runs pure top-k block-sparse attention. Quality depends on `topk` and on how well the model tolerates sparsity, so compare against the unpatched model.
 
 ## 🔧 Installation
 
-### Method 1: ComfyUI Manager (Recommended)
+### Method 1: Comfy Registry / ComfyUI Manager (Recommended)
 
-nope
+Search for **SLA-sage** in ComfyUI Manager, or install with comfy-cli:
+
+```bash
+comfy node install comfyui-sla-sage
+```
 
 ### Method 2: Manual Installation
 
@@ -42,11 +41,6 @@ nope
 3. Install dependencies:
    ```bash
    cd comfyui_SLA-sage
-   python install.py
-   ```
-
-   Or manually:
-   ```bash
    pip install -r requirements.txt
    ```
 
@@ -54,224 +48,103 @@ nope
 
 ### Requirements
 
-- PyTorch >= 2.0.0
-- CUDA-compatible GPU
-- ComfyUI (latest version recommended)
-- SLA
-- Sparge attention
+- A recent ComfyUI (tested on ComfyUI 0.43.0)
+- An NVIDIA CUDA GPU (Ampere or newer recommended)
+- PyTorch >= 2.7 and Triton >= 3.3 (`triton-windows` on Windows)
+- [SLA](https://github.com/marduk191/SLA), installed by `requirements.txt`
+- Optional: [SpargeAttn](https://github.com/marduk191/SpargeAttn) for the SageSLA kernels
 
 ### Optional: SageSLA (Optimized) Installation
 
-For the best performance with the SageSLA node, you can install the optimized SpargeAttn backend:
+For the SageSLA kernels, install SpargeAttn (needs a CUDA toolchain):
 
 ```bash
 pip install git+https://github.com/marduk191/SpargeAttn.git --no-build-isolation
 ```
 
-**Note:**
-- Without SpargeAttn, the SageSLA node will automatically fall back to using standard SLA
-- The standard SLA implementation works well for most use cases
-- SageSLA provides additional speed optimizations based on the SageAttention framework
-- Installation requires a CUDA development environment
+On Windows you can use the pre-built wheels from [woct0rdho/SpargeAttn](https://github.com/woct0rdho/SpargeAttn/releases). The node includes a compatibility shim for their architecture-specific modules.
+
+Without SpargeAttn, the SageSLA node falls back to standard SLA.
 
 ## 📖 Usage
 
-### Available Nodes
-
-#### 1. SLA Attention
-
-The main SLA node with full configurability:
-
-**Inputs:**
-- `model` (MODEL): Input model to patch
-
-**Parameters:**
-- `topk` (float, 0.0-1.0): Sparsity ratio
-  - 0.2 = keep 80% of tokens (recommended starting point)
-  - Lower values = more sparse = faster but may reduce quality
-  - Higher values = less sparse = slower but better quality
-
-- `feature_map` (dropdown): Kernel type for attention
-  - `softmax`: Standard attention-like kernel (recommended)
-  - `elu`: ELU-based kernel
-  - `relu`: ReLU-based kernel
-
-- `block_size_q` (int, 16-256): Block size for query processing
-  - Default: 64
-  - Affects memory usage and performance
-
-- `block_size_k` (int, 16-256): Block size for key processing
-  - Default: 64
-  - Affects memory usage and performance
-
-- `enabled` (boolean): Enable/disable SLA
-  - Useful for A/B testing
-
-**Outputs:**
-- `MODEL`: Patched model with SLA attention
-
-#### 2. SageSLA Attention (Optimized)
-
-Optimized implementation using fixed block sizes (BLKQ=128, BLKK=64) for best performance:
-
-**Inputs:**
-- `model` (MODEL): Input model to patch
-
-**Parameters:**
-- `topk` (float, 0.0-1.0): Sparsity ratio
-- `feature_map` (dropdown): Kernel type (softmax, elu, relu)
-- `enabled` (boolean): Enable/disable SageSLA
-
-**Outputs:**
-- `MODEL`: Patched model with SageSLA attention
-
-**Note:** Automatically falls back to standard SLA if SpargeAttn is not installed. For optimal performance, install SpargeAttn (see Optional Installation above).
-
-### Example Workflow
-
-A basic workflow to use SLA:
-
 ```
-CheckpointLoader → SLA Attention → KSampler → VAEDecode → SaveImage
+Load Diffusion Model / Checkpoint → SLA Attention → KSampler → VAE Decode → Save
 ```
 
-1. Load your model with `CheckpointLoaderSimple`
-2. Connect the MODEL output to `SLA Attention` node
-3. Connect the SLA Attention output to your `KSampler`
-4. Continue your workflow as normal
+Connect your MODEL to an SLA node and feed the patched model to the sampler. A ready-made workflow is in [`example_workflows/example_workflow.json`](example_workflows/example_workflow.json).
 
-See `example_workflow.json` for a complete example you can drag into ComfyUI.
+### SLA Attention
+
+| Input | Description |
+|---|---|
+| `topk` (0.01–1.0, default 0.2) | Fraction of key blocks each query block attends to exactly. 0.2 = top 20% of blocks. Lower is sparser and faster. 1.0 is (numerically) full attention. |
+| `feature_map` | Feature map for the linear branch: `softmax`, `elu`, `relu`. |
+| `block_size_q` | Query block size: 64 or 128. |
+| `block_size_k` | Key block size. Fixed at 64 by the SLA kernel. |
+| `enabled` | Turn the patch off to A/B test. |
+| `start_percent` / `end_percent` (optional) | Sampling-progress window in which sparse attention is used. Steps outside it use regular attention. Raising `start_percent` (e.g. 0.2) keeps the early, layout-defining steps exact. |
+| `min_tokens` (optional, default 1024) | Self-attention calls with fewer tokens stay on regular attention. Short sequences gain little from sparsity. |
+
+### SageSLA Attention (Optimized)
+
+Same inputs as SLA Attention, minus the block sizes: SageSLA picks them per GPU architecture (128×64, or 64×128 on Hopper).
+
+### What gets sparse attention
+
+The kernels are used only for **self-attention** calls with:
+
+- head dimension 64 or 128 (Flux, Wan, HunyuanVideo, Qwen-Image, SD3 and SDXL all qualify; SD 1.5's 40/80/160 do not)
+- no attention mask, no grouped-query attention, and the default softmax scale
+- tensors on a CUDA device
+
+Everything else (cross-attention to text, masked attention, other head sizes) runs on ComfyUI's normal attention backend. If another node has already installed an attention override (e.g. a different attention backend), fallback calls go to that override.
 
 ### Recommended Settings
 
-**For best quality with good speedup:**
-- topk: 0.2
-- feature_map: softmax
-- block sizes: 64 (default)
-
-**For maximum speed:**
-- topk: 0.1
-- feature_map: relu
-- block sizes: 32
-
-**For minimal quality loss:**
-- topk: 0.3
-- feature_map: softmax
-- block sizes: 64
-
-## 🎯 Tips & Best Practices
-
-1. **Start with defaults**: The default settings (topk=0.2, softmax) work well for most models
-
-2. **Experiment with topk**: This is the most impactful parameter
-   - Lower = faster but may affect quality
-   - Higher = slower but better quality
-
-3. **Use SageSLA for simplicity**: If you don't need fine control, SageSLA provides good defaults
-
-4. **Test before production**: Always compare outputs with and without SLA to ensure quality meets your needs
-
-5. **GPU Memory**: SLA may use different memory patterns than standard attention. If you encounter OOM errors, try:
-   - Reducing block sizes
-   - Increasing topk (less sparse)
-   - Reducing batch size
+| Goal | topk | start_percent |
+|---|---|---|
+| Quality first | 0.3 | 0.2 |
+| Balanced | 0.2 | 0.1 |
+| Maximum speed | 0.1 | 0.0 |
 
 ## 🐛 Troubleshooting
 
-### "SLA module not found" error
-
-Make sure you've installed the SLA package:
+**"SLA module not found"**: install SLA:
 ```bash
 pip install git+https://github.com/marduk191/SLA.git
 ```
 
-### "Using standard SLA (SageSLA not found)" message
+**"SageSLA not available ... falling back to standard SLA"**: SpargeAttn isn't installed, or doesn't match your GPU or PyTorch. Standard SLA is used instead.
 
-This is an informational message, not an error. It means:
-- You're using the SageSLA node without the SpargeAttn package installed
-- The node automatically falls back to standard SLA implementation
-- Everything will work fine, but you may not get the maximum performance boost
+**"SLA failed (...); using regular attention for the rest of this model"**: the kernel raised an error, for example Triton is missing or there is no compiled kernel for your GPU. The node logs the error and keeps sampling on regular attention.
 
-To get the optimized SageSLA implementation:
+**No speedup**: check that the model runs on CUDA, that its head dim is 64/128, and that sequences are long (high resolution or video). Lower `topk`. Enable INFO logging to see `sparse attention on (B, H, L, D)` messages.
+
+**Quality loss**: raise `topk`, raise `start_percent`, or try a different `feature_map`.
+
+## 🧪 Testing
+
+`tests/test_comfyui_integration.py` runs the nodes inside a ComfyUI checkout. It builds a small random-weight Flux model, samples with and without the patch, and checks both tensor layouts, the fallbacks, override chaining and the step window. Without a GPU it runs the real SLA Triton kernels through Triton's CPU interpreter:
+
 ```bash
-pip install git+https://github.com/marduk191/SpargeAttn.git --no-build-isolation
+COMFYUI_PATH=/path/to/ComfyUI python tests/test_comfyui_integration.py
 ```
-note: if you can not get this to build on windows, wheels are available here - https://github.com/woct0rdho/SpargeAttn/releases/tag/v0.1.0-windows.post3
-### No speedup observed
 
-- Ensure you're using a CUDA GPU
-- Try lower topk values (0.1-0.2)
-- Some models may benefit more than others
-
-### Quality degradation
-
-- Increase topk value (0.3-0.4)
-- Try different feature_map options
-- Use SLA Attention with softmax kernel
-
-### Out of memory errors
-
-- Reduce block_size_q and block_size_k
-- Increase topk (less sparse requires less memory overhead)
-- Reduce batch size in your workflow
-
-## 📚 Technical Details
-
-### How It Works
-
-SLA replaces the standard attention mechanism in diffusion models with a hybrid sparse-linear attention:
-
-1. **Sparse Selection**: Identifies most relevant tokens using topk selection
-2. **Linear Attention**: Applies efficient linear attention kernels
-3. **Hybrid Output**: Combines sparse and linear components
-
-This approach maintains quality while significantly reducing computational cost, especially for long sequences.
-
-### Performance Characteristics
-
-- **Speedup**: Typically 1.5-3x faster inference depending on settings
-- **Memory**: Similar or slightly lower memory usage compared to standard attention
-- **Quality**: Minimal quality loss with proper parameter tuning (topk ≥ 0.2)
+On a CUDA machine, add `SLA_TEST_DEVICE=cuda` to run the kernels natively.
 
 ## 🙏 Credits
 
-- **SLA Implementation**: [thu-ml/SLA](https://github.com/thu-ml/SLA)
-- **Original Paper**: "SLA: Sparse-Linear Attention for Accelerating Diffusion Models" (2025)
-- **Authors**: Tsinghua University & UC Berkeley researchers
+- **SLA**: [thu-ml/SLA](https://github.com/thu-ml/SLA). "SLA: Beyond Sparsity in Diffusion Transformers via Fine-Tunable Sparse-Linear Attention" (Zhang et al., 2025)
+- **SpargeAttn / SageAttention**: [thu-ml/SpargeAttn](https://github.com/thu-ml/SpargeAttn)
+- **Windows wheels**: [woct0rdho/SpargeAttn](https://github.com/woct0rdho/SpargeAttn)
 
 ## 📄 License
 
-This project follows the license of the original SLA repository. Please refer to the [SLA repository](https://github.com/thu-ml/SLA) for license details.
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to:
-
-- Report bugs
-- Suggest features
-- Submit pull requests
-- Share your results
-
-## 📞 Support
-
-If you encounter issues:
-
-1. Check the [Troubleshooting](#-troubleshooting) section
-2. Review [example_workflow.json](example_workflow.json)
-3. Open an issue on GitHub with:
-   - ComfyUI version
-   - GPU model
-   - Error messages
-   - Your workflow/settings
+Apache-2.0, following the [SLA repository](https://github.com/thu-ml/SLA).
 
 ## 🔗 Links
 
 - [SLA Original Repository](https://github.com/thu-ml/SLA)
 - [ComfyUI](https://github.com/comfyanonymous/ComfyUI)
-- [ComfyUI Manager](https://github.com/ltdrdata/ComfyUI-Manager)
-
----
-
-**Made with ❤️ for the ComfyUI community**
-
-*Accelerate your diffusion models with SLA!*
+- [Comfy Registry](https://registry.comfy.org)

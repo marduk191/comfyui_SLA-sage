@@ -1,0 +1,23 @@
+[project]
+name = "comfyui-sla-sage"
+version = "1.1.0"
+description = "Sparse-Linear Attention (SLA) and SageSLA attention patches for ComfyUI. Speeds up self-attention in diffusion transformers (Flux, Wan, HunyuanVideo, SDXL, ...) on CUDA GPUs."
+authors = [{ name = "marduk191" }]
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.10"
+dependencies = [
+    "sparse_linear_attention @ git+https://github.com/marduk191/SLA.git",
+]
+classifiers = [
+    "Operating System :: OS Independent",
+    "Environment :: GPU :: NVIDIA CUDA",
+]
+
+[project.urls]
+Repository = "https://github.com/marduk191/comfyui_SLA-sage"
+"Bug Tracker" = "https://github.com/marduk191/comfyui_SLA-sage/issues"
+
+[tool.comfy]
+PublisherId = "marduk191"
+DisplayName = "SLA-sage (Sparse-Linear Attention)"

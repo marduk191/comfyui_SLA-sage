@@ -43,8 +43,7 @@ def install_requirements():
     except subprocess.CalledProcessError as e:
         print(f"\nERROR: Installation failed: {e}")
         print("\nYou can try manual installation:")
-        print("  pip install torch>=2.0.0")
-        print("  pip install git+https://github.com/thu-ml/SLA.git")
+        print("  pip install git+https://github.com/marduk191/SLA.git")
         return False
 
 if __name__ == "__main__":
